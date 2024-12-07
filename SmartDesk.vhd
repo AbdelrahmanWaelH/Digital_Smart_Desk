@@ -17,7 +17,7 @@ constant lightThreshold : ieee.NUMERIC_STD.UNSIGNED (7 downto 0) := "00010000";
 constant clockSpeed : ieee.NUMERIC_STD.UNSIGNED(35 downto 0) := "000000000000000000000000001000000000";
 signal clockDividerCounter : ieee.NUMERIC_STD.UNSIGNED(35 downto 0) := ieee.NUMERIC_STD.TO_UNSIGNED(0, 36); 
 signal timeOnDeskCounter : integer := 0;
-signal passedFirstCycle : STD_LOGIC := 0;
+signal passedFirstCycle : STD_LOGIC := '0';
 begin
 	process (clk) begin
 
