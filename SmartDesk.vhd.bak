@@ -1,47 +1,87 @@
 library IEEE;
 use IEEE.std_logic_1164.all;
-use IEEE.std_logic_arith.all;
-use IEEE.NUMERIC_STD.ALL;
+use IEEE.NUMERIC_STD.all;
 
 entity SmartDesk is
-port( 	clk, reset : IN STD_LOGIC;
-	proximitySensor : IN STD_LOGIC;
-	lightSensor : IN std_logic_vector(7 downto 0);
-	timeOnDesk : OUT integer;
-	lampLight, drawerMotor : OUT STD_LOGIC);
+    port (
+        clk, reset        : IN STD_LOGIC;
+        proximitySensor   : IN STD_LOGIC; -- Signal from Arduino
+        lightIn     	  : IN STD_LOGIC; -- ADC output from LDR
+        timeOnDesk        : BUFFER integer; -- Time spent on the desk in seconds
+        lampLight         : OUT STD_LOGIC; -- Lamp control
+        drawerMotorOpen    : OUT STD_LOGIC; -- Drawer motor control
+	drawerMotorClose   : OUT STD_LOGIC
+    );
 end SmartDesk;
 
 architecture deskLogic of SmartDesk is
-constant lightThreshold : ieee.NUMERIC_STD.UNSIGNED (7 downto 0) := "00010000";
---constant clockSpeed : ieee.NUMERIC_STD.UNSIGNED(35 downto 0) := "101110100100001110110111010000000000"; --50GHz clock, value used in clock division
-constant clockSpeed : ieee.NUMERIC_STD.UNSIGNED(35 downto 0) := "000000000000000000000000001000000000";
-signal clockDividerCounter : ieee.NUMERIC_STD.UNSIGNED(35 downto 0) := ieee.NUMERIC_STD.TO_UNSIGNED(0, 36); 
-signal timeOnDeskCounter : integer := 0;
-signal passedFirstCycle : STD_LOGIC := 0;
+
+    -- Clock divider constant: Adjust for desired time unit based on clock frequency
+    constant clockSpeed : integer := 5; 
+    signal clockDividerCounter : integer := 0; 
+    signal timeOnDeskCounter   : integer := 0; -- Counter for time on desk
+    signal passedFirstCycle    : STD_LOGIC := '0'; -- Tracks if drawer has been opened
+	
+ -- State encoding
+    type state_type is (OPEN_state, PAUSE, CLOSE);
+    signal current_state : state_type := PAUSE;
+
 begin
-	process (clk) begin
+    -- Main process for controlling desk behavior
+    process (clk, reset)
+    begin
+        if reset = '1' then
+            -- Reset all internal counters and outputs
+            clockDividerCounter <= 0;
+            timeOnDeskCounter <= 0;
+            lampLight <= '0';
+        elsif rising_edge(clk) then
+            if proximitySensor = '1' then
+                
+		--Handle Drawer Action
+		CASE current_state is
+			WHEN OPEN_state =>
+				if( timeOnDesk >= 2) then current_state <= PAUSE; end if;
+			WHEN PAUSE => 
+				if( timeOnDesk >= 7 and timeOnDesk < 9) then current_state <= CLOSE;
+				elsif (timeOnDesk = 0) current_state <= OPEN_state;
+				else current_state <= PAUSE;
+				end if;
+			WHEN CLOSE =>
+				if(timeOnDesk >= 9) then current_state <= PAUSE; end if;
+		end CASE;
+			
 
-		if (rising_edge(clk) and proximitySensor = '1') then 
+	
+                -- Increment time counter using clock divider
+                clockDividerCounter <= clockDividerCounter + 1;
+                if clockDividerCounter = clockSpeed then
+                    timeOnDeskCounter <= timeOnDeskCounter + 1;
+                    clockDividerCounter <= 0;
+                end if;
 
-			if(passedFirstCycle = '0') then
-				--Open Drawer
-				passedFirstCycle <= '1';
-			end if;
-			clockDividerCounter <= clockDividerCounter + 1;	
-			if(clockDividerCounter = clockSpeed) then
-				timeOnDeskCounter <= timeOnDeskCounter + 1;
-				clockDividerCounter <= ieee.NUMERIC_STD.TO_UNSIGNED(0, 36); 
-			end if;
-		end if;
+                -- Control lamp based on light level
+               
+            else
+                -- Reset outputs when no presence is detected
+                passedFirstCycle <= '0';
+                lampLight <= '0'; -- Turn off lamp
+                clockDividerCounter <= 0; -- Reset clock divider
+            end if;
+        end if;
+    end process;
 
-		if(reset = '1') then
-			clockDividerCounter <= ieee.NUMERIC_STD.TO_UNSIGNED(0, 36);
-			timeOnDeskCounter <= 0;
-		end if;
-	end process;
+    -- Output time on desk
+    timeOnDesk <= timeOnDeskCounter;
+with current_state select
+    drawerMotorOpen <= '1' when OPEN_state,
+                      '0' when others;
 
-	timeOnDesk <= timeOnDeskCounter;
+with current_state select
+    drawerMotorClose <= '1' when CLOSE,
+                       '0' when others;
+ 
+
 
 end deskLogic;
-			
-	
+
